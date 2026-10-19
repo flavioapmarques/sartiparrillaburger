@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bike, Check, ChevronDown, LayoutGrid, MessageSquare, Minus, Plus, PlusCircle, Printer, Search, ShoppingBag, Store, Trash2, User, UtensilsCrossed, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { customerAddress, isExtraCategory, isSnackCategory, lineTotal, money, orderTypeLabel, parseMoney, paymentLabel, round2 } from '../lib/format'
+import { customerAddress, isExtraCategory, isSnackCategory, lineTotal, money, openOrderWhatsApp, orderTypeLabel, parseMoney, paymentLabel, round2 } from '../lib/format'
 import { iconFor } from '../lib/icons'
-import { ErrorNote, Modal } from '../components/ui'
+import { ErrorNote, Modal, WhatsAppIcon } from '../components/ui'
 import { PrintDialog } from '../components/Print'
 import type { CartLine, Category, Customer, Order, OrderType, PaymentMethod, Product } from '../types'
 
@@ -261,6 +261,13 @@ export default function Sales() {
             <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-green-100 text-green-700"><Check size={36} /></span>
             <p className="text-lg">Pedido <strong className="font-display text-3xl text-brand-dark">{done.order_number}</strong> registrado</p>
             <p className="text-muted">{money(done.total)} - {paymentLabel[done.payment_method]}{done.change_amount ? ` - troco ${money(done.change_amount)}` : ''}</p>
+            <button
+              type="button"
+              className="btn w-full bg-[#25D366] py-4 text-lg text-white hover:bg-[#20ba5a]"
+              onClick={() => openOrderWhatsApp(done)}
+            >
+              <WhatsAppIcon size={22} /> Enviar no WhatsApp
+            </button>
             <button className="btn-dark w-full py-4 text-lg" onClick={() => setPrinting(true)}><Printer size={22} /> Imprimir pedido</button>
             <button className="btn-primary w-full py-4 text-lg" onClick={() => { setPrinting(false); setDone(null) }}>Nova venda</button>
           </div>

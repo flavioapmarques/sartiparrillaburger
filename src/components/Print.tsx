@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Printer } from 'lucide-react'
-import { BRAND, formatDateTime, money, orderTypeLabel, paymentLabel, round2 } from '../lib/format'
-import { Modal } from './ui'
+import { BRAND, formatDateTime, money, openOrderWhatsApp, orderTypeLabel, paymentLabel, round2 } from '../lib/format'
+import { Modal, WhatsAppIcon } from './ui'
 import type { Order } from '../types'
 
 type Via = 'chapa' | 'motoboy' | 'ambas'
@@ -162,8 +162,18 @@ export function PrintDialog({ order, onClose }: { order: Order; onClose: () => v
           </div>
         </div>
 
-        <p className="text-sm text-muted">Na janela que abrir, escolha a impressora de bobina e desative "Cabeçalhos e rodapés". Cada via sai em uma página, para a guilhotina cortar entre elas.</p>
-        <button className="btn-primary w-full py-4 text-lg" onClick={() => window.print()}><Printer size={22} /> Imprimir</button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            className="btn w-full bg-[#25D366] py-4 text-lg text-white hover:bg-[#20ba5a] sm:flex-1"
+            onClick={() => openOrderWhatsApp(order)}
+          >
+            <WhatsAppIcon size={22} /> Enviar no WhatsApp
+          </button>
+          <button className="btn-primary w-full py-4 text-lg sm:flex-1" onClick={() => window.print()}>
+            <Printer size={22} /> Imprimir
+          </button>
+        </div>
       </div>
       {createPortal(<div id="print-root">{tickets}</div>, document.body)}
     </Modal>

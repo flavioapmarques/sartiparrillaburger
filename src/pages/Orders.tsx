@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Bike, Printer, Search, Store } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { dayRange, formatDateTime, localDateInput, money, orderTypeLabel, paymentLabel, round2 } from '../lib/format'
-import { Empty, ErrorNote, Modal } from '../components/ui'
+import { dayRange, formatDateTime, localDateInput, money, openOrderWhatsApp, orderTypeLabel, paymentLabel, round2 } from '../lib/format'
+import { Empty, ErrorNote, Modal, WhatsAppIcon } from '../components/ui'
 import { PrintDialog } from '../components/Print'
 import type { Order } from '../types'
 
@@ -114,7 +114,18 @@ export default function Orders() {
             ))}
           </ul>
           <p className="mt-4 flex items-center justify-between text-lg font-bold"><span>Total</span><span className="font-display text-2xl text-brand-dark">{money(selected.total)}</span></p>
-          <button className="btn-dark mt-4 w-full py-4" onClick={() => setPrinting(true)}><Printer size={20} /> Imprimir pedido</button>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              className="btn w-full bg-[#25D366] py-3.5 text-white hover:bg-[#20ba5a] sm:flex-1"
+              onClick={() => openOrderWhatsApp(selected)}
+            >
+              <WhatsAppIcon size={20} /> Enviar no WhatsApp
+            </button>
+            <button className="btn-dark w-full py-3.5 sm:flex-1" onClick={() => setPrinting(true)}>
+              <Printer size={20} /> Imprimir pedido
+            </button>
+          </div>
         </Modal>
       )}
       {selected && printing && <PrintDialog order={selected} onClose={() => setPrinting(false)} />}

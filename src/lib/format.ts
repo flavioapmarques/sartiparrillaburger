@@ -1,4 +1,4 @@
-import type { PaymentMethod, OrderType } from '../types'
+import type { PaymentMethod, OrderType, Order } from '../types'
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -60,3 +60,68 @@ export const CREDIT = 'Desenvolvido por Flavio Marques'
 export const normalize = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 export const isExtraCategory = (name: string) => normalize(name).startsWith('acrescimo')
 export const isSnackCategory = (name: string) => normalize(name).startsWith('lanche')
+
+export function formatOrderWhatsApp(order: Order): string {
+  const delivery = order.order_type === 'entrega'
+  const lines: string[] = [
+    `🍔 *${BRAND.toUpperCase()}* 🍔`,
+    `*PEDIDO #${order.order_number}*`,
+    `📅 ${formatDateTime(order.created_at)}`,
+    `🛵 *${delivery ? 'ENTREGA' : 'RETIRADA'}*`,
+    `👤 Cliente: *${order.customer_name}*`,
+  ]
+
+  if (order.customer_phone) {
+    lines.push(`📞 Tel: ${order.customer_phone}`)
+  }
+
+  if (delivery && order.delivery_address) {
+    lines.push(`📍 *Endereço:* ${order.delivery_address}`)
+  }
+
+  lines.push('')
+  lines.push('📋 *ITENS:*')
+
+  const items = order.order_items ?? []
+  for (const item of items) {
+    lines.push(`• *${item.quantity}x ${item.product_name}* - ${money(item.subtotal)}`)
+    if (item.extra_amount > 0 || item.extra_note) {
+      lines.push(`   └ + Acréscimo: ${item.extra_note || ''}${item.extra_amount > 0 ? ` (+${money(item.extra_amount)})` : ''}`)
+    }
+    if (item.note) {
+      lines.push(`   └ Obs: ${item.note}`)
+    }
+  }
+
+  lines.push('')
+  if (delivery && order.delivery_fee > 0) {
+    lines.push(`Subtotal: ${money(round2(order.total - order.delivery_fee))}`)
+    lines.push(`Taxa de entrega: ${money(order.delivery_fee)}`)
+  }
+
+  lines.push(`*TOTAL: ${money(order.total)}*`)
+  lines.push(`Pagamento: ${paymentLabel[order.payment_method]}`)
+
+  if (order.amount_received !== null) {
+    lines.push(`Valor recebido: ${money(order.amount_received)}`)
+  }
+  if (order.change_amount !== null && order.change_amount > 0) {
+    lines.push(`Troco: *${money(order.change_amount)}*`)
+  }
+
+  lines.push('')
+  lines.push('Agradecemos a sua preferência! 💛')
+
+  return lines.join('\n')
+}
+
+export function openOrderWhatsApp(order: Order) {
+  const cleanPhone = order.customer_phone ? order.customer_phone.replace(/\D/g, '') : ''
+  let phone = cleanPhone
+  if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
+    phone = `55${cleanPhone}`
+  }
+  const msg = encodeURIComponent(formatOrderWhatsApp(order))
+  const url = phone ? `https://wa.me/${phone}?text=${msg}` : `https://wa.me/?text=${msg}`
+  window.open(url, '_blank')
+}
