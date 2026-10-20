@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { ClipboardList, LogOut, ShoppingBag, Store, Users, UtensilsCrossed, type LucideIcon } from 'lucide-react'
+import { ClipboardList, LogOut, ShoppingBag, Store, Users, UtensilsCrossed, BarChart3, type LucideIcon } from 'lucide-react'
 import { isConfigured, supabase } from './lib/supabase'
 import Login from './pages/Login'
 import Sales from './pages/Sales'
 import Products from './pages/Products'
 import Customers from './pages/Customers'
 import Orders from './pages/Orders'
+import Dashboard from './pages/Dashboard'
 import { BRAND, CREDIT } from './lib/format'
 
-type Tab = 'vendas' | 'pedidos' | 'produtos' | 'clientes'
+type Tab = 'vendas' | 'pedidos' | 'painel' | 'produtos' | 'clientes'
 
 const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: 'vendas', label: 'Vender', icon: ShoppingBag },
   { id: 'pedidos', label: 'Pedidos', icon: ClipboardList },
+  { id: 'painel', label: 'Painel', icon: BarChart3 },
   { id: 'produtos', label: 'Produtos', icon: Store },
   { id: 'clientes', label: 'Clientes', icon: Users },
 ]
@@ -75,6 +77,7 @@ export default function App() {
       <main className="mx-auto w-full max-w-[1500px] flex-1 p-3 sm:p-5">
         {tab === 'vendas' && <Sales />}
         {tab === 'pedidos' && <Orders />}
+        {tab === 'painel' && <Dashboard />}
         {tab === 'produtos' && <Products />}
         {tab === 'clientes' && <Customers />}
       </main>
