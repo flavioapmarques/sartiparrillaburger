@@ -5,6 +5,7 @@ import { customerAddress, isExtraCategory, isSnackCategory, lineTotal, money, op
 import { iconFor } from '../lib/icons'
 import { ErrorNote, Modal, WhatsAppIcon } from '../components/ui'
 import { PrintDialog } from '../components/Print'
+import { WhatsAppImportModal } from '../components/WhatsAppImportModal'
 import type { CartLine, Category, Customer, Order, OrderType, PaymentMethod, Product } from '../types'
 
 type ItemPatch = Pick<CartLine, 'extraAmount' | 'extraNote' | 'extraIds' | 'note'>
@@ -31,6 +32,13 @@ export default function Sales() {
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [cartOpen, setCartOpen] = useState(false)
   const [checkout, setCheckout] = useState(false)
+  const [waModalOpen, setWaModalOpen] = useState(false)
+  const [initialCheckoutData, setInitialCheckoutData] = useState<{
+    type?: OrderType
+    address?: string
+    payment?: PaymentMethod | null
+    received?: string
+  } | null>(null)
   const [done, setDone] = useState<Order | null>(null)
   const [printing, setPrinting] = useState(false)
   const [editing, setEditing] = useState<{ line: CartLine; focus: 'extra' | 'note' } | null>(null)
@@ -119,9 +127,20 @@ export default function Sales() {
   return (
     <div className="grid gap-4 pb-24 lg:grid-cols-[1fr_400px] lg:pb-0">
       <section className="min-w-0 space-y-3">
-        <div className="relative">
-          <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input className="field py-3.5 pl-11 text-lg" placeholder="Buscar produto" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input className="field py-3.5 pl-11 text-base sm:text-lg" placeholder="Buscar produto" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <button
+            type="button"
+            className="btn flex shrink-0 items-center gap-2 bg-[#25D366] px-3.5 py-3.5 font-bold text-white shadow-sm hover:bg-[#20ba5a]"
+            onClick={() => setWaModalOpen(true)}
+            title="Importar pedido colado do WhatsApp"
+          >
+            <WhatsAppIcon size={20} />
+            <span className="hidden sm:inline">Venda WhatsApp</span>
+          </button>
         </div>
 
         <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0" role="tablist" aria-label="Categorias">
@@ -183,8 +202,16 @@ export default function Sales() {
         <div className="card flex min-h-0 flex-1 flex-col lg:sticky lg:top-[78px]">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <h2 className="flex items-center gap-2 text-xl font-bold"><ShoppingBag size={22} /> Pedido</h2>
-            <div className="flex items-center gap-1">
-              {cart.length > 0 && <button className="rounded-lg px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50" onClick={() => setCart([])}>Limpar</button>}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-lg border border-[#25D366] bg-green-50 px-2 py-1.5 text-xs font-bold text-green-900 hover:bg-green-100"
+                onClick={() => setWaModalOpen(true)}
+                title="Colar mensagem do WhatsApp"
+              >
+                <WhatsAppIcon size={14} className="text-[#25D366]" /> Whats
+              </button>
+              {cart.length > 0 && <button className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50" onClick={() => setCart([])}>Limpar</button>}
               <button className="rounded-lg p-2 hover:bg-paper lg:hidden" aria-label="Fechar pedido" onClick={() => setCartOpen(false)}><X size={22} /></button>
             </div>
           </div>
@@ -253,7 +280,71 @@ export default function Sales() {
 
       {editing && <ItemModal line={editing.line} focus={editing.focus} extraProducts={extraProducts} onClose={() => setEditing(null)} onSave={applyItem} />}
 
-      {checkout && <Checkout cart={cart} itemsTotal={total} customer={customer} onClose={() => setCheckout(false)} onDone={finish} />}
+      {checkout && (
+        <Checkout
+          cart={cart}
+          itemsTotal={total}
+          customer={customer}
+          initialType={initialCheckoutData?.type}
+          initialAddress={initialCheckoutData?.address}
+          initialPayment={initialCheckoutData?.payment}
+          initialReceived={initialCheckoutData?.received}
+          onClose={() => {
+            setCheckout(false)
+            setInitialCheckoutData(null)
+          }}
+          onDone={(order) => {
+            setInitialCheckoutData(null)
+            finish(order)
+          }}
+        />
+      )}
+
+      {waModalOpen && (
+        <WhatsAppImportModal
+          products={saleProducts}
+          extraProducts={extraProducts}
+          customers={customers}
+          onClose={() => setWaModalOpen(false)}
+          onApply={({
+            cart: newCart,
+            customer: pickedCustomer,
+            customerName,
+            customerPhone,
+            orderType: pickedType,
+            address: pickedAddress,
+            payment: pickedPayment,
+            received: pickedReceived,
+            proceedToCheckout,
+          }) => {
+            if (pickedCustomer) {
+              setCustomer(pickedCustomer)
+            } else if (customerName && customerName !== 'Cliente avulso') {
+              setCustomer({
+                id: '',
+                name: customerName,
+                phone: customerPhone || null,
+                address: pickedAddress || null,
+                complement: null,
+                reference: null,
+              })
+            }
+
+            setCart(newCart)
+            setInitialCheckoutData({
+              type: pickedType,
+              address: pickedAddress,
+              payment: pickedPayment,
+              received: pickedReceived,
+            })
+            setWaModalOpen(false)
+
+            if (proceedToCheckout) {
+              setCheckout(true)
+            }
+          }}
+        />
+      )}
 
       {done && (
         <Modal title="Venda concluída" onClose={() => { setPrinting(false); setDone(null) }}>
@@ -403,13 +494,33 @@ function CustomerPicker({ customers, value, onChange }: { customers: Customer[];
 
 const payments: PaymentMethod[] = ['pix', 'dinheiro', 'debito', 'credito']
 
-function Checkout({ cart, itemsTotal, customer, onClose, onDone }: { cart: CartLine[]; itemsTotal: number; customer: Customer | null; onClose: () => void; onDone: (o: Order) => void }) {
+function Checkout({
+  cart,
+  itemsTotal,
+  customer,
+  initialType,
+  initialAddress,
+  initialPayment,
+  initialReceived,
+  onClose,
+  onDone,
+}: {
+  cart: CartLine[]
+  itemsTotal: number
+  customer: Customer | null
+  initialType?: OrderType
+  initialAddress?: string
+  initialPayment?: PaymentMethod | null
+  initialReceived?: string
+  onClose: () => void
+  onDone: (o: Order) => void
+}) {
   const registeredAddress = customer ? customerAddress(customer) : ''
-  const [type, setType] = useState<OrderType>('retirada')
-  const [address, setAddress] = useState(registeredAddress)
+  const [type, setType] = useState<OrderType>(initialType ?? 'retirada')
+  const [address, setAddress] = useState(initialAddress || registeredAddress)
   const [fee, setFee] = useState('')
-  const [payment, setPayment] = useState<PaymentMethod | null>(null)
-  const [received, setReceived] = useState('')
+  const [payment, setPayment] = useState<PaymentMethod | null>(initialPayment ?? null)
+  const [received, setReceived] = useState(initialReceived ?? '')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // Mesma chave em toda tentativa: se clicar duas vezes ou tentar de novo, o banco não duplica o pedido
@@ -437,9 +548,29 @@ function Checkout({ cart, itemsTotal, customer, onClose, onDone }: { cart: CartL
     lock.current = true
     setBusy(true)
     setError(null)
+
+    // Se o cliente tem nome e telefone mas ainda não existe no banco, cria o registro
+    let customerId = customer?.id || null
+    if (!customerId && customer?.name && customer.name !== 'Cliente avulso') {
+      try {
+        const { data: newCust } = await supabase
+          .from('customers')
+          .insert({
+            name: customer.name.trim(),
+            phone: customer.phone ? customer.phone.trim() : null,
+            address: delivery ? address.trim() : null,
+          })
+          .select('id')
+          .single()
+        if (newCust?.id) customerId = newCust.id
+      } catch {
+        // Ignora se der erro de inserção e segue com cliente avulso
+      }
+    }
+
     const { data, error } = await supabase.rpc('create_order', {
       p_client_key: clientKey.current,
-      p_customer_id: customer?.id ?? null,
+      p_customer_id: customerId,
       p_order_type: type,
       p_address: delivery ? address.trim() : null,
       p_payment: payment,
