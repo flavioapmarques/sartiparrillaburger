@@ -40,7 +40,31 @@ const numberWords: Record<string, number> = {
   dez: 10,
 }
 
-// Observações comuns em lanches e bebidas
+// Normalização avançada para culinária e bebidas
+export function canonicalize(str: string): string {
+  return normalize(str)
+    // Refrigerantes e volumes
+    .replace(/coca[- ]?cola/g, 'coca')
+    .replace(/guaran[aá](?: antarctica)?/g, 'guarana')
+    .replace(/2\s*(?:litros?|lts?|l\b)/g, '2l')
+    .replace(/1\.?5\s*(?:litros?|lts?|l\b)/g, '1.5l')
+    .replace(/1\s*(?:litro|lt|l\b)/g, '1l')
+    .replace(/600\s*(?:ml)?/g, '600ml')
+    .replace(/350\s*(?:ml)?|lata\b/g, 'lata')
+    .replace(/zero/g, 'zero')
+    // Lanches e sanduíches
+    .replace(/\bx\s*[- ]\s*/g, 'x-')
+    .replace(/\bxbacon\b/g, 'x-bacon')
+    .replace(/\bxsalada\b/g, 'x-salada')
+    .replace(/\bxburger\b|\bxburguer\b/g, 'x-burger')
+    .replace(/\bxtudo\b/g, 'x-tudo')
+    .replace(/\bxegg\b/g, 'x-egg')
+    .replace(/\bxfrango\b/g, 'x-frango')
+    .replace(/\bxcalabresa\b/g, 'x-calabresa')
+    .replace(/\bhamburger\b|\bburguer\b|\bburger\b|\bhamburguer\b/g, 'hamburguer')
+}
+
+// Observações comuns
 const commonNotes = [
   'sem cebola',
   'sem tomate',
@@ -50,6 +74,10 @@ const commonNotes = [
   'sem queijo',
   'sem bacon',
   'sem picles',
+  'sem milho',
+  'sem catchup',
+  'sem ketchup',
+  'sem mostarda',
   'molho a parte',
   'molho à parte',
   'bem passado',
@@ -57,14 +85,30 @@ const commonNotes = [
   'mal passado',
   'com gelo',
   'sem gelo',
-  'com limao',
-  'com limão',
+  'limao e gelo',
+  'limão e gelo',
   'bem gelada',
   'gelada',
   'natural',
-  'sem acucar',
-  'sem açúcar',
 ]
+
+// Linhas ou preâmbulos que não são produtos
+function isNoiseLine(line: string): boolean {
+  const norm = canonicalize(line)
+  if (!norm || norm.length < 2) return true
+
+  // Saudações e preâmbulos comuns
+  if (
+    /^(oi|ola|olá|boa noite|bom dia|boa tarde|por favor|obrigad[oa]|td bem|tudo bem)\W*$/i.test(norm) ||
+    /^(quero fazer um pedido|fazer um pedido|quero pedir|gostaria de fazer um pedido|segue o pedido|meu pedido)\b/i.test(norm) ||
+    /^(quero|vou querer|tem como mandar|me manda)\s+(?:dois|tres|quatro|cinco|\d+)?\s*(?:lanches?|pedidos?|coisas?)\b/i.test(norm) ||
+    /^(endereco|entrega:|entregar em:|pagamento:|forma de pagamento:|pix|dinheiro|cartao)/i.test(norm)
+  ) {
+    return true
+  }
+
+  return false
+}
 
 export function parseWhatsAppOrder(
   text: string,
@@ -89,31 +133,27 @@ export function parseWhatsAppOrder(
   const rawLines = text.split('\n').map((l) => l.trim()).filter(Boolean)
 
   // 1. Tentar detectar nome de quem enviou pelo formato do WhatsApp:
-  // Ex: "[19:40, 20/10/2026] João da Silva: Oi, queria um burger..." ou "João Silva: Olá..."
   for (const line of rawLines) {
     const headerMatch = line.match(/^(?:\[?\d{1,2}:\d{2}(?::\d{2})?(?:,\s*\d{1,2}\/\d{1,2}\/\d{2,4})?\]?\s*)?([A-Za-zÀ-ÿ0-9\s]{2,30}):\s*(.*)$/)
     if (headerMatch && !result.customerName) {
       const candidate = headerMatch[1].trim()
-      // Se não for algo genérico como "Você"
       if (!/^(voce|você|eu|atendente|bot)$/i.test(candidate)) {
         result.customerName = candidate
       }
     }
 
-    // "Nome: ..." ou "Meu nome é ..."
     const nameMatch = line.match(/(?:meu\s+nome\s+e|nome(?:\s+do\s+cliente)?\s*[:\-])\s*([A-Za-zÀ-ÿ\s]{2,40})/i)
     if (nameMatch && !result.customerName) {
       result.customerName = nameMatch[1].trim()
     }
 
-    // Telefone
     const phoneMatch = line.match(/(?:tel(?:efone)?|cel(?:ular)?|whats(?:app)?\s*[:\-])?\s*(\(?\d{2}\)?\s*9?\d{4}[-\s]?\d{4})/i)
     if (phoneMatch && !result.customerPhone) {
       result.customerPhone = phoneMatch[1].trim()
     }
   }
 
-  // Se detectou telefone ou nome, tenta bater com cliente cadastrado
+  // Tenta vincular com cliente existente
   if (result.customerPhone || result.customerName) {
     const cleanP = result.customerPhone.replace(/\D/g, '')
     const foundCust = customers.find((c) => {
@@ -129,7 +169,7 @@ export function parseWhatsAppOrder(
   }
 
   // 2. Detectar Tipo (Entrega vs Retirada) e Endereço
-  const fullTextNorm = normalize(text)
+  const fullTextNorm = canonicalize(text)
 
   const deliveryKeywords = ['entrega', 'entregar', 'delivery', 'levar', 'trazer', 'mandar', 'motoboy', 'viagem']
   const pickupKeywords = ['retirada', 'retirar', 'buscar', 'pegar ai', 'vou ai buscar', 'passo ai', 'balcao', 'comer ai']
@@ -137,7 +177,6 @@ export function parseWhatsAppOrder(
   const hasDelivery = deliveryKeywords.some((w) => fullTextNorm.includes(w))
   const hasPickup = pickupKeywords.some((w) => fullTextNorm.includes(w))
 
-  // Detecção de linhas de endereço
   const addressLines: string[] = []
   const addressPrefixes = [
     'rua', 'r.', 'av.', 'avenida', 'alameda', 'al.', 'estrada', 'travessa',
@@ -145,8 +184,7 @@ export function parseWhatsAppOrder(
   ]
 
   for (const line of rawLines) {
-    const lineNorm = normalize(line)
-    // Se a linha tem indicação explícita de endereço
+    const lineNorm = canonicalize(line)
     if (
       lineNorm.includes('endereco') ||
       lineNorm.includes('entrega:') ||
@@ -169,7 +207,6 @@ export function parseWhatsAppOrder(
     result.orderType = 'retirada'
   }
 
-  // Se o cliente já tem endereço cadastrado e ficou vazio
   if (result.orderType === 'entrega' && !result.address && result.customer?.address) {
     result.address = [result.customer.address, result.customer.complement, result.customer.reference]
       .filter(Boolean)
@@ -183,11 +220,10 @@ export function parseWhatsAppOrder(
     result.paymentMethod = 'dinheiro'
   } else if (fullTextNorm.includes('debito')) {
     result.paymentMethod = 'debito'
-  } else if (fullTextNorm.includes('credito') || fullTextNorm.includes('cartao') || fullTextNorm.includes('cartão')) {
+  } else if (fullTextNorm.includes('credito') || fullTextNorm.includes('cartao')) {
     result.paymentMethod = 'credito'
   }
 
-  // Detectar troco
   const trocoMatch = fullTextNorm.match(/troco\s*(?:para|pra|de)?\s*(?:r\$)?\s*(\d+(?:[.,]\d{1,2})?)/)
   if (trocoMatch) {
     const parsedTroco = parseMoney(trocoMatch[1])
@@ -198,92 +234,127 @@ export function parseWhatsAppOrder(
   }
 
   // 4. Detecção de Itens e Produtos
-  // Ordena produtos por tamanho do nome (mais longos primeiro) para evitar que "Burger" pegue "Burger Parrilla" antes
-  const sortedProducts = [...products].sort((a, b) => b.name.length - a.name.length)
+  // Ordena produtos ativos pelo tamanho do nome canônico (do mais longo para o mais curto)
+  const sortedProducts = [...products].sort((a, b) => canonicalize(b.name).length - canonicalize(a.name).length)
 
-  // Quebra o texto por linhas e pontuações
-  const segments: string[] = []
-  rawLines.forEach((l) => {
-    // Remove mensagens do WhatsApp timestamp
-    const cleanL = l.replace(/^\[?\d{1,2}:\d{2}.*?\]?\s*[^:]+:\s*/, '').trim()
-    if (!cleanL) return
+  // Filtra as linhas da mensagem que possam conter pedidos
+  for (const rawLine of rawLines) {
+    // Remove cabeçalhos de mensagem do WhatsApp
+    const line = rawLine.replace(/^\[?\d{1,2}:\d{2}.*?\]?\s*[^:]+:\s*/, '').trim()
+    if (!line || isNoiseLine(line)) continue
 
-    // Se a linha é endereço, pagamento ou saudação pura, ignora
-    const lNorm = normalize(cleanL)
-    if (
-      lNorm.startsWith('rua') ||
-      lNorm.startsWith('av') ||
-      lNorm.startsWith('endereco') ||
-      /^(oi|ola|olá|boa noite|bom dia|boa tarde|por favor|obrigad[oa]|td bem|tudo bem)\W*$/i.test(cleanL) ||
-      /^(pagamento|forma de pagamento|vou pagar|pagar no|pix|dinheiro|cartao)/i.test(cleanL)
-    ) {
-      return
+    // Extrai quantidade no início da linha (suporta números como "1", "2x", ou por extenso "um", "dois")
+    let qty = 1
+    let lineWorkingText = line
+
+    // Regex que pega número no início SEM engolir o 'x' do sanduíche (ex: '1 x salada' -> pega 1, e deixa 'x salada')
+    const startNumMatch = lineWorkingText.match(/^(\d+)\s*(?:x\s+(?=[a-z])|x|\*|-)?\s*(.*)$/i)
+    if (startNumMatch && Number(startNumMatch[1]) > 0 && Number(startNumMatch[1]) <= 50) {
+      qty = Number(startNumMatch[1])
+      lineWorkingText = startNumMatch[2].trim()
+    } else {
+      // Tenta número por extenso no início (ex: "dois angus bacon")
+      const words = lineWorkingText.split(/\s+/)
+      const firstWord = normalize(words[0])
+      if (numberWords[firstWord]) {
+        qty = numberWords[firstWord]
+        lineWorkingText = words.slice(1).join(' ').trim()
+      }
     }
 
-    // Divide linhas que têm mais de um item separados por vírgula ou ponto e vírgula
-    const parts = cleanL.split(/[,;]|\be\s+(?=\d|\bum\b|\bdois\b|\buma\b|\bduas\b)/i)
-    parts.forEach((p) => {
-      const trimmed = p.trim()
-      if (trimmed) segments.push(trimmed)
-    })
-  })
+    const canonLine = canonicalize(lineWorkingText)
 
-  // Para cada segmento, tenta achar um produto
-  for (const seg of segments) {
-    const segNorm = normalize(seg)
+    // Procura o produto correspondente
     let matchedProduct: Product | null = null
+    let matchedProductCanonName = ''
 
-    // Procura produto correspondente
     for (const p of sortedProducts) {
-      const pNorm = normalize(p.name)
-      // Correspondência por nome completo ou palavras-chave principais
-      if (segNorm.includes(pNorm)) {
+      const pCanon = canonicalize(p.name)
+      if (!pCanon) continue
+
+      // Caso 1: Nome do produto está contido na linha
+      if (canonLine.includes(pCanon)) {
         matchedProduct = p
+        matchedProductCanonName = pCanon
         break
       }
 
-      // Se for abreviação simples, ex: nome é "X-Bacon" e usuário escreveu "xbacon"
-      const pClean = pNorm.replace(/[-\s]/g, '')
-      const segClean = segNorm.replace(/[-\s]/g, '')
-      if (segClean.includes(pClean) && pClean.length >= 3) {
+      // Caso 2: Tolerância para hífens e espaçamentos (ex: "x-salada" vs "x salada" vs "xsalada")
+      const pNoPunct = pCanon.replace(/[-\s]/g, '')
+      const lineNoPunct = canonLine.replace(/[-\s]/g, '')
+      if (pNoPunct.length >= 3 && lineNoPunct.includes(pNoPunct)) {
         matchedProduct = p
+        matchedProductCanonName = pCanon
+        break
+      }
+
+      // Caso 3: Palavras-chave essenciais (ex: "Angus Bacon" -> "angus" e "bacon")
+      const pWords = pCanon.split(/[-\s]+/).filter((w) => w.length >= 3)
+      if (pWords.length >= 2 && pWords.every((w) => canonLine.includes(w))) {
+        matchedProduct = p
+        matchedProductCanonName = pCanon
         break
       }
     }
 
     if (matchedProduct) {
-      // Detectar quantidade
-      let qty = 1
-      // Ex: "2x", "2 ", "3 - ", "1 burger"
-      const numMatch = seg.match(/(?:^|\b)(\d+)\s*(?:x|\*|-)?\s*/i)
-      if (numMatch && Number(numMatch[1]) > 0 && Number(numMatch[1]) <= 50) {
-        qty = Number(numMatch[1])
-      } else {
-        // Tenta por extenso ("dois", "duas", "um", etc.)
-        for (const [w, val] of Object.entries(numberWords)) {
-          const wRegex = new RegExp(`\\b${w}\\b`, 'i')
-          if (wRegex.test(segNorm)) {
-            qty = val
-            break
-          }
+      // REGRA CRÍTICA: Remove o nome do produto identificado do texto da linha!
+      // Assim, a palavra "bacon" de "Angus Bacon" NUNCA será considerada acréscimo!
+      let remainingText = canonLine
+
+      // Remove as palavras do produto identificado
+      const pWords = matchedProductCanonName.split(/[-\s]+/).filter(Boolean)
+      for (const w of pWords) {
+        remainingText = remainingText.replace(new RegExp(`\\b${w}\\b`, 'gi'), ' ')
+      }
+      remainingText = remainingText.replace(/\s+/g, ' ').trim()
+
+      // Agora procura Acréscimos APENAS no texto restante
+      const matchedExtras: Product[] = []
+      const extraCustomNotes: string[] = []
+
+      // Procura por acréscimos na lista de produtos extras
+      for (const ex of extraProducts) {
+        const exCanon = canonicalize(ex.name)
+        const exWord = exCanon.replace(/extra/gi, '').trim()
+
+        if (
+          (exWord.length >= 3 && remainingText.includes(exWord)) ||
+          remainingText.includes(exCanon)
+        ) {
+          matchedExtras.push(ex)
+          // Remove o extra do texto restante
+          remainingText = remainingText.replace(new RegExp(`\\b${exWord}\\b`, 'gi'), ' ')
         }
       }
 
-      // Detectar Observação
+      // Se o cliente escreveu "com acrescimo de ..." ou "+ ..." com algo que não estava tabelado
+      const explicitExtraMatch = remainingText.match(/(?:com\s+acrescimo\s+de|com\s+adicional\s+de|com\s+extra\s+de|\+\s*extra\s+de)\s+([a-zÀ-ÿ0-9\s]+?)(?=(?:sem\b|ao\b|bem\b|mal\b|$))/i)
+      if (explicitExtraMatch && matchedExtras.length === 0) {
+        const extraText = explicitExtraMatch[1].trim()
+        if (extraText) {
+          extraCustomNotes.push(`+ ${extraText}`)
+        }
+      }
+
+      // Agora procura Observações no texto restante
       const foundNotes: string[] = []
       for (const note of commonNotes) {
-        if (segNorm.includes(note)) {
+        const noteCanon = canonicalize(note)
+        if (remainingText.includes(noteCanon)) {
           foundNotes.push(note.charAt(0).toUpperCase() + note.slice(1))
+          remainingText = remainingText.replace(new RegExp(`\\b${noteCanon}\\b`, 'gi'), ' ')
         }
       }
 
-      // Detectar Acréscimo
-      const matchedExtras: Product[] = []
-      for (const ex of extraProducts) {
-        const exNorm = normalize(ex.name)
-        if (segNorm.includes(exNorm) || segNorm.includes(exNorm.replace(/extra/i, '').trim())) {
-          matchedExtras.push(ex)
-        }
+      // Se sobrou alguma observação personalizada com "sem ..."
+      const customSemMatch = remainingText.match(/\bsem\s+([a-zÀ-ÿ]+)/i)
+      if (customSemMatch && !foundNotes.some((n) => n.toLowerCase().includes(customSemMatch[1].toLowerCase()))) {
+        foundNotes.push(`Sem ${customSemMatch[1]}`)
+      }
+
+      if (extraCustomNotes.length > 0) {
+        foundNotes.push(...extraCustomNotes)
       }
 
       const extraAmount = matchedExtras.reduce((s, e) => s + e.price, 0)
@@ -300,9 +371,9 @@ export function parseWhatsAppOrder(
         note: foundNotes.join(', '),
       })
     } else {
-      // Se não bateu com nenhum produto e tem tamanho razoável, guarda para o operador ver
-      if (seg.length > 3) {
-        result.unmatchedLines.push(seg)
+      // Se não identificou produto e não for ruído
+      if (lineWorkingText.length >= 4) {
+        result.unmatchedLines.push(rawLine)
       }
     }
   }
